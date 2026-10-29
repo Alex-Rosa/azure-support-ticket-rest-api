@@ -49,5 +49,6 @@ export const POST = handle(async (req: NextRequest) => {
       }
       return client.createTicket(scope, name, body);
     },
+    name,
   );
 });

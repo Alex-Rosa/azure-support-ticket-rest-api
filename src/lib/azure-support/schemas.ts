@@ -34,6 +34,8 @@ export const createTicketSchema = z
     require24X7Response: z.boolean().optional(),
     problemStartTime: z.iso.datetime({ offset: true }).optional(),
     resourceId: z.string().startsWith("/subscriptions/").optional(),
+    /** Required by some problem classifications (see secondaryConsentEnabled). */
+    secondaryConsent: z.array(z.object({ type: z.string().min(1), userConsent: consentSchema })).optional(),
     contactDetails: contactSchema,
   })
   .refine((v) => phoneRequired(v.contactDetails, v.severity), {

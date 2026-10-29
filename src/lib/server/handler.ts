@@ -44,13 +44,7 @@ export async function parseBody<T>(req: NextRequest, schema: ZodType<T>): Promis
   return schema.parse(await req.json());
 }
 
-export interface WriteEnvelope<T> {
-  /** Set by the browser after the user confirms; ignored unless live mode is on. */
-  confirm?: boolean;
-  input: T;
-}
-
-export type DryRunResult = { dryRun: true; reason: string; request: PlannedRequest };
+export type DryRunResult = { dryRun: true; reason: string; request: PlannedRequest; name?: string };
 
 /**
  * Writes only go to Azure when SUPPORT_LIVE_MODE=true AND the request carries
@@ -60,13 +54,15 @@ export async function guardedWrite<R>(
   confirm: boolean | undefined,
   plan: () => PlannedRequest,
   execute: () => Promise<R>,
+  /** Generated resource name, echoed back so the confirm call can reuse it. */
+  name?: string,
 ): Promise<Response> {
   const { liveMode } = getConfig();
   if (!liveMode || confirm !== true) {
     const reason = liveMode
       ? "Not confirmed: review the request, then submit again to send it."
       : "Dry-run mode: SUPPORT_LIVE_MODE is not enabled, so nothing was sent to Azure.";
-    return Response.json({ dryRun: true, reason, request: plan() } satisfies DryRunResult);
+    return Response.json({ dryRun: true, reason, request: plan(), name } satisfies DryRunResult);
   }
   return Response.json({ dryRun: false, result: await execute() });
 }

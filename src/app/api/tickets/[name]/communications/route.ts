@@ -36,5 +36,6 @@ export const POST = handle(async (req: NextRequest, ctx: Ctx) => {
       }
       return client.createCommunication(scope, ticketName, name, input);
     },
+    name,
   );
 });
