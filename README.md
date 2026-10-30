@@ -1,5 +1,7 @@
 # Azure Support Ticket Manager
 
+[![CI](https://github.com/Alex-Rosa/azure-support-ticket-rest-api/actions/workflows/ci.yml/badge.svg)](https://github.com/Alex-Rosa/azure-support-ticket-rest-api/actions/workflows/ci.yml)
+
 A local web app for creating and managing Azure support tickets through the [Azure Support REST API](https://learn.microsoft.com/rest/api/support/?view=rest-support-2024-04-01) (`Microsoft.Support`, `2024-04-01`).
 
 - **List and filter tickets** for a subscription or at tenant level, by status, created date, service and severity, with paging.
@@ -52,6 +54,8 @@ The scope picker in the header switches between a subscription (`/subscriptions/
 | `npm test` | Unit tests (Vitest) against mocked ARM responses; they never call Azure |
 | `npm run typecheck` | Generate Next.js route types and run `tsc` |
 | `npm run lint` | ESLint |
+
+GitHub Actions runs lint, typecheck, tests and `next build` on every pull request and push to `main` ([.github/workflows/ci.yml](.github/workflows/ci.yml)). Dependabot proposes dependency updates weekly.
 
 ## Not in v1
 
