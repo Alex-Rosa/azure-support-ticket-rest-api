@@ -67,7 +67,7 @@ export class SupportClient {
     const result = await this.arm.request<{ problemClassificationResults?: ProblemClassificationResult[] }>(
       "POST",
       path,
-      { apiVersion: CLASSIFY_API_VERSION, body: input },
+      { apiVersion: CLASSIFY_API_VERSION, body: input, idempotent: true },
     );
     return result.problemClassificationResults ?? [];
   }
@@ -90,6 +90,7 @@ export class SupportClient {
   checkTicketName(scope: Scope, name: string): Promise<CheckNameAvailabilityResult> {
     return this.arm.request("POST", `${supportBasePath(scope)}/checkNameAvailability`, {
       body: { name, type: "Microsoft.Support/supportTickets" },
+      idempotent: true,
     });
   }
 
@@ -126,6 +127,7 @@ export class SupportClient {
   checkCommunicationName(scope: Scope, ticketName: string, name: string): Promise<CheckNameAvailabilityResult> {
     return this.arm.request("POST", `${ticketPath(scope, ticketName)}/checkNameAvailability`, {
       body: { name, type: "Microsoft.Support/communications" },
+      idempotent: true,
     });
   }
 

@@ -1,7 +1,7 @@
 import "server-only";
 // Shared plumbing for route handlers: error mapping, scope parsing and the
 // dry-run guard for anything that writes to Azure Support.
-import type { NextRequest } from "next/server";
+import { connection, type NextRequest } from "next/server";
 import { ZodError, type ZodType } from "zod";
 import { ArmError, parseScope, type PlannedRequest, type Scope } from "@/lib/azure-support";
 import { getConfig } from "./config";
@@ -10,7 +10,12 @@ export type ApiErrorBody = { error: { code: string; message: string; details?: u
 
 export function errorResponse(err: unknown): Response {
   if (err instanceof ArmError) {
-    return Response.json({ error: { code: err.code, message: err.message, details: err.details } }, { status: err.status });
+    // Reads already retried; this hint is for writes, which aren't retried automatically.
+    const message =
+      err.status === 403 && err.code === "Forbidden"
+        ? `${err.message} If you do have access, this may be Azure's intermittent 403; try again.`
+        : err.message;
+    return Response.json({ error: { code: err.code, message, details: err.details } }, { status: err.status });
   }
   if (err instanceof ZodError) {
     return Response.json(
@@ -28,6 +33,9 @@ export function errorResponse(err: unknown): Response {
 /** Wraps a handler so thrown errors become JSON error responses. */
 export function handle<C>(fn: (req: NextRequest, ctx: C) => Promise<Response>) {
   return async (req: NextRequest, ctx: C) => {
+    // Every API route talks to Azure per request; opt out of prerendering up front.
+    // Outside the try: during a build this rejects on purpose and Next.js handles it.
+    await connection();
     try {
       return await fn(req, ctx);
     } catch (err) {

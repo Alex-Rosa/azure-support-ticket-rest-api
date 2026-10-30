@@ -113,3 +113,9 @@ SUPPORT_LIVE_MODE=true
 ```
 
 The header badge then reads **LIVE**. Each create, reply or update still shows the request first and only sends it after you click **Send to Azure**. A created ticket is a real case with Microsoft Support. There is no sandbox, so close test tickets right away from **Manage → Status: Closed**.
+
+## Troubleshooting
+
+**Intermittent `403 Forbidden … Learn about RBAC for support ticket operations`.** On some subscriptions, the Support resource provider rejects a share of subscription-scope calls even when the caller has access. We saw about 60% of calls rejected with the same token, while tenant-scope calls always succeeded. To check whether you're seeing this rather than a missing role, call the API a few times in a row. Mixed 200/403 results with the same token mean it's the intermittent issue.
+
+The app retries reads (and the read-only name checks) up to four times with backoff, which hides nearly all of these. Writes are never retried automatically; if one fails this way, the message says so and you can submit it again. A persistent 403 on every call is a real permissions problem; see [Permissions](#permissions-rbac).

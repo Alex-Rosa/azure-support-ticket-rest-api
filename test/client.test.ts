@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ArmClient, ArmError, SupportClient, parseScope } from "@/lib/azure-support";
+import { ArmClient, ArmError, FORBIDDEN_RETRY_DELAYS_MS, SupportClient, parseScope } from "@/lib/azure-support";
 import { SUB, mockArm, sampleTicket } from "./mock-arm";
 
 const sub = parseScope(SUB);
@@ -17,12 +17,38 @@ describe("ArmClient", () => {
 
   it("maps ARM error bodies to ArmError", async () => {
     const arm = mockArm({
-      status: 403,
-      body: { error: { code: "Forbidden", message: "User does not have permission" } },
+      status: 400,
+      body: { error: { code: "InvalidParameter", message: "The severity value is invalid" } },
     });
     const err = await new ArmClient(arm.options).get("/x").catch((e) => e);
     expect(err).toBeInstanceOf(ArmError);
-    expect(err).toMatchObject({ status: 403, code: "Forbidden", message: "User does not have permission" });
+    expect(err).toMatchObject({ status: 400, code: "InvalidParameter", message: "The severity value is invalid" });
+  });
+
+  it("retries a read through Azure's intermittent 403", async () => {
+    const forbidden = { status: 403, body: { error: { code: "Forbidden", message: "no" } } };
+    const arm = mockArm(forbidden, forbidden, { body: { value: [] } });
+    await expect(new ArmClient(arm.options).get("/x")).resolves.toEqual({ value: [] });
+    expect(arm.requests).toHaveLength(3);
+  });
+
+  it("gives up after the retries and reports the 403", async () => {
+    const forbidden = { status: 403, body: { error: { code: "Forbidden", message: "no" } } };
+    const arm = mockArm(...Array(FORBIDDEN_RETRY_DELAYS_MS.length + 1).fill(forbidden));
+    await expect(new ArmClient(arm.options).get("/x")).rejects.toMatchObject({ status: 403 });
+    expect(arm.requests).toHaveLength(FORBIDDEN_RETRY_DELAYS_MS.length + 1);
+  });
+
+  it("never retries writes on 403", async () => {
+    const arm = mockArm({ status: 403, body: { error: { code: "Forbidden", message: "no" } } });
+    await expect(new ArmClient(arm.options).request("PUT", "/t", { body: {} })).rejects.toMatchObject({ status: 403 });
+    expect(arm.requests).toHaveLength(1);
+  });
+
+  it("does not retry other errors", async () => {
+    const arm = mockArm({ status: 404, body: { error: { code: "ResourceNotFound", message: "x" } } });
+    await expect(new ArmClient(arm.options).get("/x")).rejects.toMatchObject({ status: 404 });
+    expect(arm.requests).toHaveLength(1);
   });
 
   it("refuses nextLinks that don't point at ARM", async () => {

@@ -21,7 +21,16 @@ export interface RequestOptions {
   apiVersion?: string;
   query?: Record<string, string | number | undefined>;
   body?: unknown;
+  /** Safe to repeat (reads, name checks): retried on Azure's intermittent 403s. */
+  idempotent?: boolean;
 }
+
+/**
+ * The Support resource provider intermittently answers 403 for callers who do
+ * have access (seen ~60% of calls on some subscriptions). Reads are retried
+ * with these delays before the 403 is reported.
+ */
+export const FORBIDDEN_RETRY_DELAYS_MS = [300, 800, 1500, 3000];
 
 export class ArmError extends Error {
   constructor(
@@ -57,7 +66,7 @@ export class ArmClient {
   }
 
   async request<T>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
-    const res = await this.send(method, this.url(path, opts), opts.body);
+    const res = await this.send(method, this.url(path, opts), opts.body, opts.idempotent ?? method === "GET");
     if (res.status === 202 || (res.status === 201 && hasPollingHeader(res))) {
       return this.pollLongRunning<T>(res, path, opts);
     }
@@ -73,10 +82,22 @@ export class ArmClient {
     if (!isArmUrl(nextLink, this.endpoint)) {
       throw new ArmError(400, "InvalidNextLink", "nextLink must point at the Azure Resource Manager endpoint.");
     }
-    return readJson<T>(await this.send("GET", nextLink));
+    return readJson<T>(await this.send("GET", nextLink, undefined, true));
   }
 
-  private async send(method: string, url: string, body?: unknown): Promise<Response> {
+  private async send(method: string, url: string, body?: unknown, retryForbidden = false): Promise<Response> {
+    const delays = retryForbidden ? FORBIDDEN_RETRY_DELAYS_MS : [];
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.sendOnce(method, url, body);
+      } catch (err) {
+        if (!(err instanceof ArmError) || err.status !== 403 || attempt >= delays.length) throw err;
+        await this.sleep(delays[attempt]);
+      }
+    }
+  }
+
+  private async sendOnce(method: string, url: string, body?: unknown): Promise<Response> {
     const token = await this.options.getToken();
     const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
@@ -106,7 +127,7 @@ export class ArmClient {
     if (asyncUrl) {
       for (;;) {
         await this.sleep(retryAfter);
-        const res = await this.send("GET", asyncUrl);
+        const res = await this.send("GET", asyncUrl, undefined, true);
         const op = (await readJson<{ status?: string; error?: { code?: string; message?: string } }>(res)) ?? {};
         const status = (op.status ?? "").toLowerCase();
         if (status === "succeeded") break;
@@ -119,7 +140,7 @@ export class ArmClient {
     } else if (locationUrl) {
       for (;;) {
         await this.sleep(retryAfter);
-        const res = await this.send("GET", locationUrl);
+        const res = await this.send("GET", locationUrl, undefined, true);
         if (res.status !== 202) break;
         if (Date.now() > deadline) throw new ArmError(504, "OperationTimeout", "Timed out waiting for the operation.");
         retryAfter = retryAfterMs(res) ?? this.options.pollIntervalMs ?? 2_000;
