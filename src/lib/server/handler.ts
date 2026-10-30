@@ -44,7 +44,7 @@ export async function parseBody<T>(req: NextRequest, schema: ZodType<T>): Promis
   return schema.parse(await req.json());
 }
 
-export type DryRunResult = { dryRun: true; reason: string; request: PlannedRequest; name?: string };
+export type DryRunResult = { dryRun: true; reason: string; request: PlannedRequest | PlannedRequest[]; name?: string };
 
 /**
  * Writes only go to Azure when SUPPORT_LIVE_MODE=true AND the request carries
@@ -52,7 +52,8 @@ export type DryRunResult = { dryRun: true; reason: string; request: PlannedReque
  */
 export async function guardedWrite<R>(
   confirm: boolean | undefined,
-  plan: () => PlannedRequest,
+  /** One request, or the ordered list for multi-step writes such as file uploads. */
+  plan: () => PlannedRequest | PlannedRequest[],
   execute: () => Promise<R>,
   /** Generated resource name, echoed back so the confirm call can reuse it. */
   name?: string,

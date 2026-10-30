@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/native-select";
 import { ErrorAlert, SessionGate } from "@/components/session-gate";
 import { useGuardedWrite } from "@/components/guarded-write";
+import { Attachments } from "@/components/tickets/attachments";
 import { SeverityBadge, StatusBadge } from "@/components/tickets/badges";
 import { Field } from "@/components/tickets/ticket-list";
 import { api, describeError, withScope } from "@/lib/client/api";
@@ -83,6 +84,7 @@ function TicketDetailForScope({ scope, name }: { scope: string; name: string }) 
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="messages">Messages</TabsTrigger>
           <TabsTrigger value="chats">Chat transcripts</TabsTrigger>
+          <TabsTrigger value="attachments">Attachments</TabsTrigger>
           <TabsTrigger value="manage">Manage</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="pt-2">
@@ -90,6 +92,9 @@ function TicketDetailForScope({ scope, name }: { scope: string; name: string }) 
         </TabsContent>
         <TabsContent value="messages" className="pt-2">
           <Messages scope={scope} base={base} contactEmail={p.contactDetails?.primaryEmailAddress} />
+        </TabsContent>
+        <TabsContent value="attachments" className="pt-2">
+          <Attachments scope={scope} ticketName={name} />
         </TabsContent>
         <TabsContent value="chats" className="pt-2">
           <ChatTranscripts scope={scope} base={base} />
