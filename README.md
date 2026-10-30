@@ -8,6 +8,7 @@ A local web app for creating and managing Azure support tickets through the [Azu
 - **Ticket detail**: description, SLA, contact, support engineer, messages, chat transcripts.
 - **Create tickets** in a guided flow: service → problem type (with optional AI suggestions from the preview classify API) → details → contact → review.
 - **Update and reply**: change severity, status, diagnostic consent or contact details, and add messages.
+- **Attachments**: list a ticket's files and upload new ones (up to 5 MB each), including files picked while creating a ticket.
 - **Safe by default**: every write is a dry run that shows the exact request. Real calls need `SUPPORT_LIVE_MODE=true` *and* a confirm click.
 - **Three auth modes**: Azure CLI, service principal, or Entra ID user sign-in.
 
@@ -43,6 +44,7 @@ https://management.azure.com/…/providers/Microsoft.Support/…
 | Tickets | Support Tickets, Support Tickets No Subscription (list, get, create, update, check name) |
 | Messages | Communications, Communications No Subscription (list, create, check name) |
 | Chats | Chat Transcripts, Chat Transcripts No Subscription (list) |
+| Attachments | Files, Files No Subscription (list, create, upload) in the ticket-number file workspace |
 
 The scope picker in the header switches between a subscription (`/subscriptions/{id}/providers/Microsoft.Support/…`) and the tenant-level "No Subscription" endpoints (`/providers/Microsoft.Support/…`). A ticket can only be read from the scope it was created in.
 
@@ -59,6 +61,6 @@ GitHub Actions runs lint, typecheck, tests and `next build` on every pull reques
 
 ## Not in v1
 
-- File attachments (File Workspaces / Files APIs)
+- Downloading attachments (the API has no download operation)
 - Hosting and multi-user deployment
 - Severity can't be filtered server-side (the API only supports status, created date, service and problem classification), so the severity filter applies to loaded pages only.

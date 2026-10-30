@@ -1,4 +1,5 @@
 export * from "./client";
+export * from "./files";
 export * from "./filter";
 export * from "./http";
 export * from "./schemas";

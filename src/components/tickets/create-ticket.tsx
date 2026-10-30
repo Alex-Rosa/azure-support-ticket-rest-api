@@ -1,6 +1,7 @@
 "use client";
 // Guided ticket creation: problem → details → contact → review.
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,9 +13,11 @@ import { NativeSelect } from "@/components/native-select";
 import { ErrorAlert, SessionGate } from "@/components/session-gate";
 import { scopeLabel, useApp } from "@/components/app-context";
 import { useGuardedWrite } from "@/components/guarded-write";
+import { FilePicker, uploadConfirmed } from "@/components/tickets/attachments";
 import { Field } from "@/components/tickets/ticket-list";
 import { api, describeError, withScope } from "@/lib/client/api";
 import { COMMON_TIME_ZONES, SEVERITIES, SEVERITY_LABELS, SUPPORT_LANGUAGES } from "@/lib/client/labels";
+import { formatBytes, sanitizeFileName } from "@/lib/azure-support/files";
 import { cn } from "@/lib/utils";
 import type {
   ContactProfile,
@@ -78,6 +81,8 @@ function CreateTicketForScope({ scope }: { scope: string }) {
   const [consent, setConsent] = React.useState<"Yes" | "No">("Yes");
   const [require24x7, setRequire24x7] = React.useState(false);
   const [secondaryConsent, setSecondaryConsent] = React.useState<Record<string, boolean>>({});
+  const [attachments, setAttachments] = React.useState<File[]>([]);
+  const [uploadFailure, setUploadFailure] = React.useState<{ ticketName: string; message: string } | null>(null);
 
   // Contact
   // This component only renders client-side (inside SessionGate), so reading
@@ -204,7 +209,44 @@ function CreateTicketForScope({ scope }: { scope: string }) {
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   };
 
-  const write = useGuardedWrite<SupportTicket>((ticket) => router.push(`/tickets/${encodeURIComponent(ticket.name)}`));
+  const write = useGuardedWrite<SupportTicket>(async (ticket) => {
+    // The ticket exists now; attachments go to its workspace. An upload
+    // failure must not look like a failed ticket, so report it separately.
+    if (attachments.length) {
+      try {
+        await uploadConfirmed(scope, ticket.name, attachments);
+      } catch (e) {
+        setUploadFailure({ ticketName: ticket.name, message: describeError(e) });
+        return;
+      }
+    }
+    router.push(`/tickets/${encodeURIComponent(ticket.name)}`);
+  });
+  const attachmentNote = attachments.length > 0 && (
+    <div className="rounded-lg border p-3 text-sm">
+      <p className="font-medium">After the ticket is created, these files are uploaded to it:</p>
+      <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+        {attachments.map((f) => (
+          <li key={f.name}>
+            {sanitizeFileName(f.name)} ({formatBytes(f.size)})
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+
+  if (uploadFailure) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-4">
+        <h1 className="text-2xl font-semibold">Ticket created</h1>
+        <ErrorAlert title="Some attachments were not uploaded" message={uploadFailure.message} />
+        <Button nativeButton={false} render={<Link href={`/tickets/${encodeURIComponent(uploadFailure.ticketName)}`} />}>
+          Open the ticket to retry from Attachments
+        </Button>
+      </div>
+    );
+  }
+
   const setC = (key: keyof ContactProfile) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setContact((c) => ({ ...c, [key]: e.target.value }));
 
@@ -349,6 +391,11 @@ function CreateTicketForScope({ scope }: { scope: string }) {
                 <span>{c.description ?? `Consent for ${c.type}`}</span>
               </label>
             ))}
+            <div className="sm:col-span-2">
+              <Field label="Attachments (optional)" hint="Uploaded to the ticket right after it's created.">
+                <FilePicker files={attachments} onChange={setAttachments} />
+              </Field>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -433,6 +480,8 @@ function CreateTicketForScope({ scope }: { scope: string }) {
               </dd>
               <dt className="text-muted-foreground">Description</dt>
               <dd className="whitespace-pre-wrap">{input.description}</dd>
+              <dt className="text-muted-foreground">Attachments</dt>
+              <dd>{attachments.length ? attachments.map((f) => sanitizeFileName(f.name)).join(", ") : "None"}</dd>
             </dl>
           </CardContent>
         </Card>
@@ -451,7 +500,9 @@ function CreateTicketForScope({ scope }: { scope: string }) {
         ) : (
           <Button
             disabled={write.busy}
-            onClick={() => write.start("Create support ticket", "POST", withScope("/api/tickets", scope), { input })}
+            onClick={() =>
+              write.start("Create support ticket", "POST", withScope("/api/tickets", scope), { input }, attachmentNote)
+            }
           >
             {write.busy ? "Preparing…" : "Review request"}
           </Button>

@@ -15,7 +15,8 @@ export class ApiError extends Error {
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    // FormData sets its own multipart Content-Type with the boundary.
+    headers: init?.body instanceof FormData ? init.headers : { "Content-Type": "application/json", ...init?.headers },
     cache: "no-store",
   });
   const text = await res.text();
@@ -34,7 +35,7 @@ export function withScope(path: string, scope: string, params: Record<string, st
   return `${path}?${search}`;
 }
 
-export type WriteResponse<T> = { dryRun: true; reason: string; request: PlannedRequest; name?: string } | { dryRun: false; result: T };
+export type WriteResponse<T> = { dryRun: true; reason: string; request: PlannedRequest | PlannedRequest[]; name?: string } | { dryRun: false; result: T };
 
 export interface Session {
   authMode: "cli" | "service-principal" | "user";

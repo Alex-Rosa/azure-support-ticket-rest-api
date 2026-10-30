@@ -135,6 +135,20 @@ export interface ChatTranscriptProperties {
 }
 export type ChatTranscript = ArmResource<ChatTranscriptProperties>;
 
+export interface FileWorkspaceProperties {
+  createdOn?: string;
+  expirationTime?: string;
+}
+export type FileWorkspace = ArmResource<FileWorkspaceProperties>;
+
+export interface FileProperties {
+  fileSize?: number;
+  chunkSize?: number;
+  numberOfChunks?: number;
+  createdOn?: string;
+}
+export type SupportFile = ArmResource<FileProperties>;
+
 export interface CheckNameAvailabilityResult {
   nameAvailable: boolean;
   reason?: string;

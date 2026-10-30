@@ -1,5 +1,6 @@
 // Typed client for the Microsoft.Support operation groups used by the app.
 import { ArmClient, type ArmClientOptions } from "./http";
+import { chunkRanges, planChunks } from "./files";
 import { buildTicketFilter, type TicketFilter } from "./filter";
 import { supportBasePath, ticketPath, type Scope } from "./scope";
 import type {
@@ -12,6 +13,7 @@ import type {
   ProblemClassificationResult,
   Service,
   Subscription,
+  SupportFile,
   SupportTicket,
   UpdateSupportTicketBody,
 } from "./types";
@@ -19,6 +21,10 @@ import type {
 /** classifyProblems only ships in preview API versions. */
 export const CLASSIFY_API_VERSION = "2025-06-01-preview";
 const SUBSCRIPTIONS_API_VERSION = "2022-12-01";
+
+function filesPath(scope: Scope, workspace: string) {
+  return `${supportBasePath(scope)}/fileWorkspaces/${encodeURIComponent(workspace)}/files`;
+}
 
 export interface PlannedRequest {
   method: string;
@@ -61,7 +67,7 @@ export class SupportClient {
     const result = await this.arm.request<{ problemClassificationResults?: ProblemClassificationResult[] }>(
       "POST",
       path,
-      { apiVersion: CLASSIFY_API_VERSION, body: input },
+      { apiVersion: CLASSIFY_API_VERSION, body: input, idempotent: true },
     );
     return result.problemClassificationResults ?? [];
   }
@@ -84,6 +90,7 @@ export class SupportClient {
   checkTicketName(scope: Scope, name: string): Promise<CheckNameAvailabilityResult> {
     return this.arm.request("POST", `${supportBasePath(scope)}/checkNameAvailability`, {
       body: { name, type: "Microsoft.Support/supportTickets" },
+      idempotent: true,
     });
   }
 
@@ -120,6 +127,7 @@ export class SupportClient {
   checkCommunicationName(scope: Scope, ticketName: string, name: string): Promise<CheckNameAvailabilityResult> {
     return this.arm.request("POST", `${ticketPath(scope, ticketName)}/checkNameAvailability`, {
       body: { name, type: "Microsoft.Support/communications" },
+      idempotent: true,
     });
   }
 
@@ -145,6 +153,46 @@ export class SupportClient {
     return this.arm.request("PUT", `${ticketPath(scope, ticketName)}/communications/${encodeURIComponent(name)}`, {
       body: { properties },
     });
+  }
+
+  // File Workspaces / Files (and their No Subscription variants).
+  // An existing ticket's workspace is named after its support ticket number.
+  async listFiles(scope: Scope, workspace: string): Promise<SupportFile[]> {
+    const items: SupportFile[] = [];
+    let page = await this.arm.get<ListResult<SupportFile>>(`${filesPath(scope, workspace)}`);
+    items.push(...page.value);
+    while (page.nextLink) {
+      page = await this.arm.getNextPage<ListResult<SupportFile>>(page.nextLink);
+      items.push(...page.value);
+    }
+    return items;
+  }
+
+  /** The requests uploadFile will send; chunk content is summarized, not included. */
+  planUploadFile(scope: Scope, workspace: string, fileName: string, fileSize: number): PlannedRequest[] {
+    const plan = planChunks(fileSize);
+    const filePath = `${filesPath(scope, workspace)}/${encodeURIComponent(fileName)}`;
+    return [
+      { method: "PUT", url: this.arm.url(filePath), body: { properties: plan } },
+      ...chunkRanges(plan).map(([start, end], chunkIndex) => ({
+        method: "POST",
+        url: this.arm.url(`${filePath}/upload`),
+        body: { chunkIndex, content: `<base64 of bytes ${start}–${end - 1} (${end - start} bytes)>` },
+      })),
+    ];
+  }
+
+  /** Creates the file entry, then uploads its chunks in order. */
+  async uploadFile(scope: Scope, workspace: string, fileName: string, data: Uint8Array): Promise<SupportFile> {
+    const plan = planChunks(data.byteLength);
+    const filePath = `${filesPath(scope, workspace)}/${encodeURIComponent(fileName)}`;
+    const file = await this.arm.request<SupportFile>("PUT", filePath, { body: { properties: plan } });
+    for (const [chunkIndex, [start, end]] of chunkRanges(plan).entries()) {
+      await this.arm.request("POST", `${filePath}/upload`, {
+        body: { chunkIndex, content: Buffer.from(data.subarray(start, end)).toString("base64") },
+      });
+    }
+    return file;
   }
 
   // Chat Transcripts / Chat Transcripts No Subscription
